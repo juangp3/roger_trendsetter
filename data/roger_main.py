@@ -15,19 +15,27 @@ import json
 import nltk
 from pathlib import Path
 
+import requests
+from requests.exceptions import HTTPError
+import shutil
+
 from ibm_watson import NaturalLanguageUnderstandingV1
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
 # system imports
 from ibm_watson.natural_language_understanding_v1 import Features, KeywordsOptions
+from googleapiclient.discovery import build
 
-auth_key = {'algorithmia': 'simnbKMNi+ynZMGZJdKe8d2CjJu1',
+auth_key = {'algorithmia': {'apikey': 'simnbKMNi+ynZMGZJdKe8d2CjJu1'},
             'nlu_watson': {'apikey': 'dx9aHzStLwZRW6Ltkjb5nAJjju9iANxLqQQXy026jLV9',
                            'version': '2019-11-06',
-                           'url': 'https://gateway-lon.watsonplatform.net/natural-language-understanding/api'}}
+                           'url': 'https://gateway-lon.watsonplatform.net/natural-language-understanding/api'},
+            'Google': {'apikey': 'AIzaSyBQ0jKnW3SYaGJitVnNGtwULwwFnvUoS_I',
+                       'searchEng': '012896964214635737899:9rpxasrajfj'}}
 
 MODULE_PATH = Path.cwd()
 RAW_DATA_PATH = MODULE_PATH.joinpath('raw')
+IMAGES_DATA_PATH = MODULE_PATH.joinpath('images')
 
 
 class searchTerm(object):
@@ -68,7 +76,7 @@ class searchResult(object):
         super(searchResult, self).__init__()
         self.search_input = dict(articleName="", lang="en")
         self.search_term = ''
-        self.client = Algorithmia.client(auth_key['algorithmia'])
+        self.client = Algorithmia.client(auth_key['algorithmia']['apikey'])
         self.algo = self.client.algo('web/WikipediaParser/0.1.2')
         self.algo.set_options(timeout=300)  # optional
 
@@ -123,20 +131,77 @@ class ibmWatson(object):
         return keywords_list
 
 
-roger = searchTerm()
-roger.search_term = roger.ask_search_term()
-roger.search_prefix = roger.ask_search_prefix()
-print('Okay! I`ll look "{} {}" for you.'.format(roger.search_prefix, roger.search_term))
+class googleSearch(object):
 
-search = searchResult()
-result = search.get_search_result_from_wiki(roger.search_term)
-result = search.get_content_processed(result)
+    def __init__(self, search_term=None):
+        super(googleSearch, self).__init__()
+        self.api_key = auth_key['Google']['apikey']
+        self.cse_id = auth_key['Google']['searchEng']
+        self.search_term = search_term
+
+    def search_images(self, search_term):
+        assert isinstance(search_term, str)
+        results = []
+        service = build("customsearch", "v1", developerKey=self.api_key)
+        results_raw = service.cse().list(q=search_term,
+                                         cx=self.cse_id,
+                                         searchType='image',
+                                         num=3,
+                                         rights='cc_nonderived,cc_sharealike').execute()
+        for item in results_raw['items']:
+            results.append(item['link'])
+        return results
+
+    def download_image(self, image_url):
+        # Open the url image, set stream to True, this will return the stream content.
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + Path(image_url).name)
+        resp = requests.get(image_url, stream=True)
+        resp.raise_for_status()
+        # Open a local file with wb ( write binary ) permission.
+        local_file = open(filename, 'wb')
+        # Set decode_content value to True, otherwise the downloaded image file's size will be zero.
+        resp.raw.decode_content = True
+        # Copy the response stream raw data to local image file.
+        shutil.copyfileobj(resp.raw, local_file)
+        # Remove the image url response object.
+        del resp
+
+    def is_image_from_url_downloaded(self, image_url):
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + Path(image_url).name)
+        file_in_dir = filename in filename.parent.iterdir()
+        return file_in_dir
+
+
+st = searchTerm()
+st.search_term = st.ask_search_term()
+st.search_prefix = st.ask_search_prefix()
+print('Okay! I`ll look "{} {}" for you.'.format(st.search_prefix, st.search_term))
+
+sr = searchResult()
+result = sr.get_search_result_from_wiki(st.search_term)
+result = sr.get_content_processed(result)
 
 nlu = ibmWatson()
-struc = dict()
-lista = []
+glg = googleSearch(st.search_term)
+content = []
 for sentence in result:
-    lista.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+    content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
 
+for elem in content:
+    for keyword in elem['keywords']:
+        elem['imageUrl'] = []
+        imageUrl = glg.search_images('{} {}'.format(st.search_term, keyword))
+        if imageUrl:
+            elem['imageUrl'] = imageUrl
+            break
 
-
+for elem in content:
+    for url in elem['imageUrl']:
+        if not glg.is_image_from_url_downloaded(url):
+            try:
+                glg.download_image(url)
+                break
+            except HTTPError:
+                print('Download error, trying the next url')
+            except OSError:
+                print('Download error, trying the next url')

@@ -25,6 +25,11 @@ from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 # system imports
 from ibm_watson.natural_language_understanding_v1 import Features, KeywordsOptions
 from googleapiclient.discovery import build
+from wand.image import Image
+from wand.drawing import Drawing
+from wand.font import Font
+from random import randrange
+
 
 auth_key = {'algorithmia': {'apikey': 'simnbKMNi+ynZMGZJdKe8d2CjJu1'},
             'nlu_watson': {'apikey': 'dx9aHzStLwZRW6Ltkjb5nAJjju9iANxLqQQXy026jLV9',
@@ -138,23 +143,30 @@ class googleSearch(object):
         self.api_key = auth_key['Google']['apikey']
         self.cse_id = auth_key['Google']['searchEng']
         self.search_term = search_term
+        self.width = 1920
+        self.height = 1080
+        self.template = {0: {'width': 1920, 'height': 400,  'gravity': 'center'},
+                         1: {'width': 1920, 'height': 1080, 'gravity': 'center'},
+                         2: {'width': 800,  'height': 1080, 'gravity': 'west'}}
 
-    def search_images(self, search_term):
-        assert isinstance(search_term, str)
+
+    def search_images_for_keyword(self, keyword):
+        assert isinstance(keyword, str)
+        query = '{} {}'.format(self.search_term, keyword)
         results = []
         service = build("customsearch", "v1", developerKey=self.api_key)
-        results_raw = service.cse().list(q=search_term,
+        results_raw = service.cse().list(q=query,
                                          cx=self.cse_id,
                                          searchType='image',
                                          num=3,
-                                         rights='cc_nonderived,cc_sharealike').execute()
+                                         rights=['cc_nonderived', 'cc_sharealike']).execute()
         for item in results_raw['items']:
             results.append(item['link'])
         return results
 
-    def download_image(self, image_url):
+    def download_image(self, image_url, keyword):
         # Open the url image, set stream to True, this will return the stream content.
-        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + Path(image_url).name)
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_original.png')
         resp = requests.get(image_url, stream=True)
         resp.raise_for_status()
         # Open a local file with wb ( write binary ) permission.
@@ -166,42 +178,92 @@ class googleSearch(object):
         # Remove the image url response object.
         del resp
 
-    def is_image_from_url_downloaded(self, image_url):
-        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + Path(image_url).name)
+    def is_image_from_url_downloaded(self, keyword):
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword)
         file_in_dir = filename in filename.parent.iterdir()
         return file_in_dir
 
+    def convert_image(self, keyword):
+        input_file = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_original.png[0]')
+        converted_file = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_converted.png')
+        with Image(filename=str(input_file)) as original:
+            with original.convert('png') as clone:
+                clone.background_color = 'white'
+                clone.blur(0, 9.)
+                clone.resize(self.width, self.height)
+                clone.composite(original, gravity='center')
+                clone.extent(self.width, self.height)
+                clone.extent(self.width, self.height)
+                clone.save(filename=str(converted_file))
 
-st = searchTerm()
-st.search_term = st.ask_search_term()
-st.search_prefix = st.ask_search_prefix()
-print('Okay! I`ll look "{} {}" for you.'.format(st.search_prefix, st.search_term))
+    def create_sentence_image(self, keyword, sentence):
+        idx = randrange(0, 3)
+        font = Font(path='tests/assets/League_Gothic.otf', size=64, color='white')
+        sentence_image = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_sentences.png')
+        with Image(width=self.template[idx]['width'],
+                   height=self.template[idx]['height'],
+                   background='transparent') as original:
+            original.caption(sentence, font=font, gravity=self.template[idx]['gravity'])
+            original.save(filename=str(sentence_image))
 
-sr = searchResult()
-result = sr.get_search_result_from_wiki(st.search_term)
-result = sr.get_content_processed(result)
-
-nlu = ibmWatson()
-glg = googleSearch(st.search_term)
-content = []
-for sentence in result:
-    content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
-
-for elem in content:
-    for keyword in elem['keywords']:
-        elem['imageUrl'] = []
-        imageUrl = glg.search_images('{} {}'.format(st.search_term, keyword))
-        if imageUrl:
-            elem['imageUrl'] = imageUrl
-            break
-
-for elem in content:
-    for url in elem['imageUrl']:
-        if not glg.is_image_from_url_downloaded(url):
-            try:
-                glg.download_image(url)
+    def create_thumbnail(self, content):
+        for keyword in content['keywords']:
+            converted_file = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_converted.png')
+            if converted_file.is_file():
+                create_thumbnail = IMAGES_DATA_PATH.joinpath(self.search_term + '_thumbnail.jpg')
+                with Image(filename=str(converted_file)) as original:
+                    with original.convert('jpg') as clone:
+                        clone.save(filename=str(create_thumbnail))
                 break
-            except HTTPError:
-                print('Download error, trying the next url')
-            except OSError:
-                print('Download error, trying the next url')
+
+
+
+class roger(object):
+
+    def __init__(self, ):
+        super(roger, self).__init__()
+
+    st = searchTerm()
+    st.search_term = st.ask_search_term()
+    st.search_prefix = st.ask_search_prefix()
+    print('Okay! I`ll look "{} {}" for you.'.format(st.search_prefix, st.search_term))
+
+    sr = searchResult()
+    result = sr.get_search_result_from_wiki(st.search_term)
+    result = sr.get_content_processed(result)
+
+    nlu = ibmWatson()
+    glg = googleSearch(st.search_term)
+    content = []
+    for sentence in result:
+        content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+
+    for elem in content:
+        for keyword in elem['keywords']:
+            elem['imageUrl'] = []
+            imageUrl = glg.search_images_for_keyword(keyword)
+            if imageUrl:
+                elem['imageUrl'] = imageUrl
+                break
+
+    for i, elem in enumerate(content):
+        for url, keyword in zip(elem['imageUrl'], elem['keywords']):
+            print('Downloading {} of {}.'.format(i+1, len(content)))
+            if glg.is_image_from_url_downloaded(keyword):
+                print('Already here, jow!')
+                break
+            else:
+                try:
+                    glg.download_image(url, keyword)
+                    glg.convert_image(keyword)
+                    glg.create_sentence_image(keyword,  elem['text'])
+                    break
+                except HTTPError:
+                    print('Download error, trying the next url')
+                except OSError:
+                    print('Download error, trying the next url')
+    glg.create_thumbnail(content[0])
+
+
+
+roger()

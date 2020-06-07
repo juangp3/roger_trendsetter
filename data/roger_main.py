@@ -7,7 +7,6 @@
 @Project : roger_trendsetter
 @Author  : juangp3
 """
-import unittest
 from builtins import dict
 
 import Algorithmia
@@ -30,6 +29,7 @@ from random import randrange
 from xml.etree import ElementTree as ET
 from srt import Subtitle, compose
 from datetime import timedelta
+import upload_video
 
 
 auth_key = {'algorithmia': {'apikey': 'simnbKMNi+ynZMGZJdKe8d2CjJu1'},
@@ -271,6 +271,7 @@ class Fcpxml(object):
     def get_clips_asset(self):
         return self.asset_dic
 
+
 class SubtitleGenerator(object):
     def __init__(self, search_term, content, clips_asset):
         self.clips_asset = clips_asset
@@ -294,55 +295,113 @@ class SubtitleGenerator(object):
 class Roger(object):
     def __init__(self, ):
         super(Roger, self).__init__()
+        self.st = SearchTerm()
+        self.sr = SearchResult()
+        self.nlu = IbmWatson()
+        self.run()
 
-    st = SearchTerm()
-    st.search_term = st.ask_search_term()
-    st.search_prefix = st.ask_search_prefix()
-    print('Okay! I`ll look "{} {}" for you.'.format(st.search_prefix, st.search_term))
+    @staticmethod
+    def create_video_snippet(search_title, search_url, content):
+        description = 'Hi, all. This video was created by Roger, the Robot\n' \
+                      'Just a side project to learn python and some APIs.\n\n' \
+                      'Links and references:\n'
 
-    sr = SearchResult()
-    result = sr.get_search_result_from_wiki(st.search_term)
-    result = sr.get_content_processed(result)
+        api_refs = 'Content reference: ' + search_url + '\n' \
+                   'Music:\nElectronic music loop M1 - By Frankum ' \
+                   '- https://freesound.org/s/333795/\n' \
+                   'Algorithmia : https://algorithmia.com/.\n' \
+                   'IMB Watson - Natural Language Understanding : ' \
+                   'https://watson-developer-cloud.github.io/node-sdk/debug/' \
+                   'classes/naturallanguageunderstandingv1.html.\n' \
+                   'Google API : https://developers.google.com/.\n' \
+                   'YouTube API: https://developers.google.com/youtube/v3.' \
+                   'wand : http://docs.wand-py.org/en/0.6.1/.'
 
-    nlu = IbmWatson()
-    glg = GoogleSearch(st.search_term)
-    content = []
-    for sentence in result:
-        content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+        img_ref = ''
+        for element in content:
+            img_ref = img_ref + '{}\n'.format(element['imageUrl_received'])
 
-    for elem in content:
-        for keyword in elem['keywords']:
-            elem['imageUrl'] = []
-            imageUrl = glg.search_images_for_keyword(keyword)
-            if imageUrl:
-                elem['imageUrl'] = imageUrl
-                break
+        video_snippet = {"snippet": {"title": search_title,
+                                     "description": '{} {}\n\n{}'.format(description, img_ref, api_refs),
+                                     "tags": content[0]['keywords'],
+                                     "categoryId": "22"},
+                         "status": {"privacyStatus": "private"}}
+        return video_snippet
 
-    for i, elem in enumerate(content):
-        for url, keyword in zip(elem['imageUrl'], elem['keywords']):
-            print('Downloading {} of {}.'.format(i+1, len(content)))
-            image_path = glg.is_image_from_url_downloaded(keyword)
-            if image_path.exists():
-                print('Already here, jow!')
-                elem['imagePath'] = image_path
-                break
-            else:
-                try:
-                    print(st.search_term + ' ' + keyword)
-                    image_path = glg.download_image(url, keyword)
-                    image_path = glg.convert_image(image_path)
-                    elem['imagePath'] = image_path
-                    #glg.create_sentence_image(keyword,  elem['text'])
+    def wait_video(self):
+        asking_message = 'Almost there...let me know when the video is done!?'
+        print(asking_message)
+        print("[0] CANCEL")
+        print("[1] Done...Upload my video!")
+
+        try:
+            result = int(input())
+        except Exception:
+            print('NOPE!! Try again')
+            self.wait_video()
+        return result
+
+    def run(self):
+        st = self.st
+        st.search_term = st.ask_search_term()
+        st.search_prefix = st.ask_search_prefix()
+        search_title = "{} {}".format(st.search_prefix, st.search_term)
+        print('Okay! I`ll look "{}" for you.'.format(search_title))
+
+        sr = self.sr
+        result = sr.get_search_result_from_wiki(st.search_term)
+        search_url = result['url']
+        result = sr.get_content_processed(result)
+
+        nlu = self.nlu
+        glg = GoogleSearch(st.search_term)
+        content = []
+        for sentence in result:
+            content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+
+        for elem in content:
+            for keyword in elem['keywords']:
+                elem['imageUrl'] = []
+                imageUrl = glg.search_images_for_keyword(keyword)
+                if imageUrl:
+                    elem['imageUrl'] = imageUrl
                     break
-                except Exception:
-                    print('Download error, trying the next url')
-        else:
-            elem['imagePath'] = content[i-1]['imagePath']
 
-    glg.create_thumbnail(content[0])
-    video_fmt = Fcpxml(st.search_term, content)
-    sub = SubtitleGenerator(st.search_term, content, video_fmt.get_clips_asset)
-    sub.create_subtitle()
+        for i, elem in enumerate(content):
+            for url, keyword in zip(elem['imageUrl'], elem['keywords']):
+                print('Downloading {} of {}.'.format(i+1, len(content)))
+                image_path = glg.is_image_from_url_downloaded(keyword)
+                if image_path.exists():
+                    print('Already here, jow!')
+                    elem['imagePath'] = image_path
+                    elem['imageUrl_received'] = url
+                    break
+                else:
+                    try:
+                        print(st.search_term + ' ' + keyword)
+                        image_path = glg.download_image(url, keyword)
+                        elem['imageUrl_received'] = url
+                        image_path = glg.convert_image(image_path)
+                        elem['imagePath'] = image_path
+                        #glg.create_sentence_image(keyword,  elem['text'])
+                        break
+                    except Exception:
+                        print('Download error, trying the next url')
+            else:
+                elem['imagePath'] = content[i-1]['imagePath']
+
+        video_snippet = self.create_video_snippet(search_title, search_url, content)
+
+        glg.create_thumbnail(content[0])
+        video_fmt = Fcpxml(st.search_term, content)
+        sub = SubtitleGenerator(st.search_term, content, video_fmt.get_clips_asset)
+        sub.create_subtitle()
+        if self.wait_video() == 1:
+            upload_video.UpVid(video_snippet, st.search_term)
+        else:
+            print("Probably everything is ready, but you have cancelled!")
+
+
 
 #########################################
 

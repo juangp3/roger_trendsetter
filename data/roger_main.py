@@ -7,7 +7,6 @@
 @Project : roger_trendsetter
 @Author  : juangp3
 """
-import unittest
 from builtins import dict
 
 import Algorithmia
@@ -16,7 +15,6 @@ import nltk
 from pathlib import Path
 
 import requests
-from requests.exceptions import HTTPError
 import shutil
 
 from ibm_watson import NaturalLanguageUnderstandingV1
@@ -26,9 +24,12 @@ from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 from ibm_watson.natural_language_understanding_v1 import Features, KeywordsOptions
 from googleapiclient.discovery import build
 from wand.image import Image
-from wand.drawing import Drawing
 from wand.font import Font
 from random import randrange
+from xml.etree import ElementTree as ET
+from srt import Subtitle, compose
+from datetime import timedelta
+import upload_video
 
 
 auth_key = {'algorithmia': {'apikey': 'simnbKMNi+ynZMGZJdKe8d2CjJu1'},
@@ -43,14 +44,15 @@ RAW_DATA_PATH = MODULE_PATH.joinpath('raw')
 IMAGES_DATA_PATH = MODULE_PATH.joinpath('images')
 
 
-class searchTerm(object):
+class SearchTerm(object):
 
     def __init__(self):
-        super(searchTerm, self).__init__()
+        super(SearchTerm, self).__init__()
         self.search_term = ''
         self.search_prefix = ''
 
-    def ask_search_term(self):
+    @staticmethod
+    def ask_search_term():
         asking_message = 'Hi! What do you want me to look?\n'
         search_term = input(asking_message)
 
@@ -69,16 +71,16 @@ class searchTerm(object):
             search_prefix_index = int(input())
             search_prefix = prefix[search_prefix_index - 1]
 
-        except:
+        except Exception:
             print('NOPE!! Try again')
-            search_prefix = self.ask_search_prefix()
 
-        return search_prefix
+        self.ask_search_prefix = search_prefix
+        return self.ask_search_prefix
 
 
-class searchResult(object):
+class SearchResult(object):
     def __init__(self):
-        super(searchResult, self).__init__()
+        super(SearchResult, self).__init__()
         self.search_input = dict(articleName="", lang="en")
         self.search_term = ''
         self.client = Algorithmia.client(auth_key['algorithmia']['apikey'])
@@ -90,7 +92,7 @@ class searchResult(object):
         result_list = sorted(RAW_DATA_PATH.glob(search_term + '_*' + '.json'))
         if result_list:
             print('Ahh...you already have this search!')
-            with result_list[0].open() as json_file:
+            with result_list[0].open(encoding="utf8") as json_file:
                 search_result = json.load(json_file)
         else:
             self.search_input['articleName'] = search_term
@@ -99,13 +101,15 @@ class searchResult(object):
 
         return search_result
 
-    def save_search_result_to_json(self, search_term, search_result):
+    @staticmethod
+    def save_search_result_to_json(search_term, search_result):
         filename = search_term + '_' + search_result['pageid'] + '.json'
         filename = RAW_DATA_PATH.joinpath(filename)
-        with open(filename, 'w') as outfile:
+        with open(filename, 'w', encoding='utf8') as outfile:
             json.dump(search_result, outfile, sort_keys=True, indent=4, ensure_ascii=False)
 
-    def get_content_processed(self, search_result, nr_of_setences=10):
+    @staticmethod
+    def get_content_processed(search_result, nr_of_setences=10):
         content_processed = ''
         content_processed_list = search_result['content'].replace("'", "`").split('\n')
         content_processed_list = [line for line in content_processed_list if
@@ -115,10 +119,10 @@ class searchResult(object):
         return sent_text_list[:nr_of_setences]
 
 
-class ibmWatson(object):
+class IbmWatson(object):
 
     def __init__(self):
-        super(ibmWatson, self).__init__()
+        super(IbmWatson, self).__init__()
         self.authenticator = IAMAuthenticator(auth_key['nlu_watson']['apikey'])
         self.nlu = NaturalLanguageUnderstandingV1(
             version=auth_key['nlu_watson']['version'],
@@ -131,15 +135,13 @@ class ibmWatson(object):
             features=Features(keywords=KeywordsOptions())).get_result()
 
         keywords_list = [keywords['text'] for keywords in response['keywords']]
-
-        # print(json.dumps(response, indent=2))
         return keywords_list
 
 
-class googleSearch(object):
+class GoogleSearch(object):
 
     def __init__(self, search_term=None):
-        super(googleSearch, self).__init__()
+        super(GoogleSearch, self).__init__()
         self.api_key = auth_key['Google']['apikey']
         self.cse_id = auth_key['Google']['searchEng']
         self.search_term = search_term
@@ -149,7 +151,6 @@ class googleSearch(object):
                          1: {'width': 1920, 'height': 1080, 'gravity': 'center'},
                          2: {'width': 800,  'height': 1080, 'gravity': 'west'}}
 
-
     def search_images_for_keyword(self, keyword):
         assert isinstance(keyword, str)
         query = '{} {}'.format(self.search_term, keyword)
@@ -158,15 +159,16 @@ class googleSearch(object):
         results_raw = service.cse().list(q=query,
                                          cx=self.cse_id,
                                          searchType='image',
-                                         num=3,
-                                         rights=['cc_nonderived', 'cc_sharealike']).execute()
+                                         num=5,
+                                         rights='(cc_publicdomain%7Ccc_attribute%7Ccc_sharealike).-(cc_noncommercial%7Ccc_nonderived)',
+                                         imgSize='XLARGE').execute()
         for item in results_raw['items']:
             results.append(item['link'])
         return results
 
     def download_image(self, image_url, keyword):
         # Open the url image, set stream to True, this will return the stream content.
-        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_original.png')
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword.replace('.', '') + '_original.png')
         resp = requests.get(image_url, stream=True)
         resp.raise_for_status()
         # Open a local file with wb ( write binary ) permission.
@@ -177,15 +179,15 @@ class googleSearch(object):
         shutil.copyfileobj(resp.raw, local_file)
         # Remove the image url response object.
         del resp
+        return filename
 
     def is_image_from_url_downloaded(self, keyword):
-        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword)
-        file_in_dir = filename in filename.parent.iterdir()
-        return file_in_dir
+        filename = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_converted.png')
+        filename in filename.parent.iterdir()
+        return filename
 
-    def convert_image(self, keyword):
-        input_file = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_original.png[0]')
-        converted_file = IMAGES_DATA_PATH.joinpath(self.search_term + '_' + keyword + '_converted.png')
+    def convert_image(self, input_file):
+        converted_file = IMAGES_DATA_PATH.joinpath(input_file.name.replace('_original.png', '_converted.png'))
         with Image(filename=str(input_file)) as original:
             with original.convert('png') as clone:
                 clone.background_color = 'white'
@@ -195,6 +197,7 @@ class googleSearch(object):
                 clone.extent(self.width, self.height)
                 clone.extent(self.width, self.height)
                 clone.save(filename=str(converted_file))
+        return converted_file
 
     def create_sentence_image(self, keyword, sentence):
         idx = randrange(0, 3)
@@ -217,53 +220,194 @@ class googleSearch(object):
                 break
 
 
+class Fcpxml(object):
+    def __init__(self, search_term, content):
+        self.search_term = search_term
+        self.content = content
+        self.template = 'VideoTemplate.fcpxml'
+        self.audio_dic = {'AUDIO_NAME': '333795__frankum__electronic-music-loop-m1.mp3',
+                          'AUDIO_PATH': 'file://localhost/C:/Users/juan_/PycharmProjects/roger_trendsetter/data/333795__frankum__electronic-music-loop-m1.mp3'}
+        self.asset_dic = {}
+        self.clip_duration = 10
+        self.clip_start_time = 5
+        self.create_asset_dic()
+        self.create_fcpxml()
 
-class roger(object):
+    def create_asset_dic(self):
+        for i, element in enumerate(self.content):
+            self.asset_dic['Image' + str(i+1)] = {'FILE_NAME' + str(i+1): element['imagePath'].name,
+                                                  'FILE_PATH' + str(i+1): element['imagePath'].as_uri()}
 
+    def create_fcpxml(self):
+        datafile = ET.parse(self.template)
+        for el in datafile.find('resources'):
+            if 'id' in el.attrib:
+                if 'Image' in el.attrib['id']:
+                    asset = self.asset_dic[el.attrib['id']]
+                    el.attrib['name'] = asset[el.attrib['name']]
+                    el.attrib['src'] = asset[el.attrib['src']]
+                elif 'Audio' in el.attrib['id']:
+                    el.attrib['name'] = self.audio_dic[el.attrib['name']]
+                    el.attrib['src'] = self.audio_dic[el.attrib['src']]
+
+        t = self.clip_start_time
+        for el in datafile.find('library/event/project/sequence/spine'):
+            if 'ref' in el.attrib:
+                if 'Image' in el.attrib['ref']:
+                    asset = self.asset_dic[el.attrib['ref']]
+                    el.attrib['name'] = asset[el.attrib['name']]
+                    el.attrib['offset'] = '{0}s'.format(t)
+                    asset['clipStart'] = t
+                    t += self.clip_duration
+                    asset['clipEnd'] = t
+                elif 'Transition' in el.attrib['ref']:
+                    el.attrib['offset'] = '{0}/2s'.format(t*2 - 1)
+                elif 'r1' in el.attrib['ref'] and el.find('spine'):
+                    for audio in el.find('spine'):
+                        audio.attrib['name'] = self.audio_dic[audio.attrib['name']]
+        datafile.write(self.search_term + '.fcpxml')
+
+    @property
+    def get_clips_asset(self):
+        return self.asset_dic
+
+
+class SubtitleGenerator(object):
+    def __init__(self, search_term, content, clips_asset):
+        self.clips_asset = clips_asset
+        self.content = content
+        self.search_term = search_term
+
+    def create_subtitle(self):
+        subs = []
+        out_filename = self.search_term + '.srt'
+        for i, (text, time) in enumerate(zip(self.content, list(self.clips_asset.values()))):
+            ti = timedelta(seconds=time['clipStart'])
+            te = timedelta(seconds=time['clipEnd'] - 1, microseconds=416000)
+            subs.append(Subtitle(index=i + 1, start=ti, end=te, content=text['text']))
+        try:
+            with open(out_filename, 'w') as out_file:
+                out_file.write(compose(subs))
+        except Exception:
+            print(out_filename + ' not created.')
+
+
+class Roger(object):
     def __init__(self, ):
-        super(roger, self).__init__()
+        super(Roger, self).__init__()
+        self.st = SearchTerm()
+        self.sr = SearchResult()
+        self.nlu = IbmWatson()
+        self.run()
 
-    st = searchTerm()
-    st.search_term = st.ask_search_term()
-    st.search_prefix = st.ask_search_prefix()
-    print('Okay! I`ll look "{} {}" for you.'.format(st.search_prefix, st.search_term))
+    @staticmethod
+    def create_video_snippet(search_title, search_url, content):
+        description = 'Hi, all. This video was created by Roger, the Robot\n' \
+                      'Just a side project to learn python and some APIs.\n\n' \
+                      'Links and references:\n'
 
-    sr = searchResult()
-    result = sr.get_search_result_from_wiki(st.search_term)
-    result = sr.get_content_processed(result)
+        api_refs = 'Content reference: ' + search_url + '\n' \
+                   'Music:\nElectronic music loop M1 - By Frankum ' \
+                   '- https://freesound.org/s/333795/\n' \
+                   'Algorithmia : https://algorithmia.com/.\n' \
+                   'IMB Watson - Natural Language Understanding : ' \
+                   'https://watson-developer-cloud.github.io/node-sdk/debug/' \
+                   'classes/naturallanguageunderstandingv1.html.\n' \
+                   'Google API : https://developers.google.com/.\n' \
+                   'YouTube API: https://developers.google.com/youtube/v3.' \
+                   'wand : http://docs.wand-py.org/en/0.6.1/.'
 
-    nlu = ibmWatson()
-    glg = googleSearch(st.search_term)
-    content = []
-    for sentence in result:
-        content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+        img_ref = ''
+        for element in content:
+            img_ref = img_ref + '{}\n'.format(element['imageUrl_received'])
 
-    for elem in content:
-        for keyword in elem['keywords']:
-            elem['imageUrl'] = []
-            imageUrl = glg.search_images_for_keyword(keyword)
-            if imageUrl:
-                elem['imageUrl'] = imageUrl
-                break
+        video_snippet = {"snippet": {"title": search_title,
+                                     "description": '{} {}\n\n{}'.format(description, img_ref, api_refs),
+                                     "tags": content[0]['keywords'],
+                                     "categoryId": "22"},
+                         "status": {"privacyStatus": "private"}}
+        return video_snippet
 
-    for i, elem in enumerate(content):
-        for url, keyword in zip(elem['imageUrl'], elem['keywords']):
-            print('Downloading {} of {}.'.format(i+1, len(content)))
-            if glg.is_image_from_url_downloaded(keyword):
-                print('Already here, jow!')
-                break
-            else:
-                try:
-                    glg.download_image(url, keyword)
-                    glg.convert_image(keyword)
-                    glg.create_sentence_image(keyword,  elem['text'])
+    def wait_video(self):
+        asking_message = 'Almost there...let me know when the video is done!?'
+        print(asking_message)
+        print("[0] CANCEL")
+        print("[1] Done...Upload my video!")
+
+        try:
+            result = int(input())
+        except Exception:
+            print('NOPE!! Try again')
+            self.wait_video()
+        return result
+
+    def run(self):
+        st = self.st
+        st.search_term = st.ask_search_term()
+        st.search_prefix = st.ask_search_prefix()
+        search_title = "{} {}".format(st.search_prefix, st.search_term)
+        print('Okay! I`ll look "{}" for you.'.format(search_title))
+
+        sr = self.sr
+        result = sr.get_search_result_from_wiki(st.search_term)
+        search_url = result['url']
+        result = sr.get_content_processed(result)
+
+        nlu = self.nlu
+        glg = GoogleSearch(st.search_term)
+        content = []
+        for sentence in result:
+            content.append({'text': sentence, 'keywords': nlu.get_keywords_from_sentences(sentence)})
+
+        for elem in content:
+            for keyword in elem['keywords']:
+                elem['imageUrl'] = []
+                imageUrl = glg.search_images_for_keyword(keyword)
+                if imageUrl:
+                    elem['imageUrl'] = imageUrl
                     break
-                except HTTPError:
-                    print('Download error, trying the next url')
-                except OSError:
-                    print('Download error, trying the next url')
-    glg.create_thumbnail(content[0])
+
+        for i, elem in enumerate(content):
+            for url, keyword in zip(elem['imageUrl'], elem['keywords']):
+                print('Downloading {} of {}.'.format(i+1, len(content)))
+                image_path = glg.is_image_from_url_downloaded(keyword)
+                if image_path.exists():
+                    print('Already here, jow!')
+                    elem['imagePath'] = image_path
+                    elem['imageUrl_received'] = url
+                    break
+                else:
+                    try:
+                        print(st.search_term + ' ' + keyword)
+                        image_path = glg.download_image(url, keyword)
+                        elem['imageUrl_received'] = url
+                        image_path = glg.convert_image(image_path)
+                        elem['imagePath'] = image_path
+                        #glg.create_sentence_image(keyword,  elem['text'])
+                        break
+                    except Exception:
+                        print('Download error, trying the next url')
+            else:
+                elem['imagePath'] = content[i-1]['imagePath']
+
+        video_snippet = self.create_video_snippet(search_title, search_url, content)
+
+        glg.create_thumbnail(content[0])
+        video_fmt = Fcpxml(st.search_term, content)
+        sub = SubtitleGenerator(st.search_term, content, video_fmt.get_clips_asset)
+        sub.create_subtitle()
+        if self.wait_video() == 1:
+            upload_video.UpVid(video_snippet, st.search_term)
+        else:
+            print("Probably everything is ready, but you have cancelled!")
 
 
 
-roger()
+#########################################
+
+
+if __name__ == '__main__':
+    Roger()
+
+
+

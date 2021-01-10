@@ -1,0 +1,114 @@
+<fcpxml version="1.8">
+    <resources>
+        <format frameDuration="1/24s" height="1080" id="r0" name="FFVideoFormat1080p24" width="1920" />
+        <format height="1080" id="r2" name="FFVideoFormatRateUndefined" width="1920" />
+        <effect id="r1" name="Vivid" uid=".../Generators.localized/Solids.localized/Vivid.localized/Vivid.motn" />
+        <effect id="r3" name="Cross Dissolve" uid="FxPlug:4731E73A-8DAC-4113-9A30-AE85B1761265" />
+        <asset audioChannels="2" audioSources="1" duration="15905711/499500s" hasAudio="1" id="Audio" name="name" src="path" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image1" name="1" src="1" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image2" name="2" src="2" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image3" name="3" src="3" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image4" name="4" src="4" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image5" name="5" src="5" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image6" name="6" src="6" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image7" name="7" src="7" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image8" name="8" src="8" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image9" name="9" src="9" start="0/1s" />
+        <asset duration="0/1s" format="r2" hasVideo="1" id="Image10" name="10" src="10" start="0/1s" />
+    </resources>
+    <library>
+        <event name="T3 (Resolve)">
+            <project name="T3 (Resolve)">
+                <sequence duration="VIDEO_TIME/1s" format="r0" tcFormat="NDF" tcStart="0s">
+                    <spine>
+                        <video duration="5/1s" enabled="1" name="Solid Color" offset="0s" ref="r1" start="0s">
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                            <spine lane="2" offset="0s">
+                                <asset-clip duration="30/1s" enabled="1" name="name" offset="0/1s" ref="Audio" start="0/1s" />
+                                <asset-clip duration="30/1s" enabled="1" name="name" offset="30s" ref="Audio" start="0/1s" />
+                                <asset-clip duration="30/1s" enabled="1" name="name" offset="60s" ref="Audio" start="0/1s" />
+                                <asset-clip duration="20/1s" enabled="1" name="name" offset="90s" ref="Audio" start="0/1s" />
+                            </spine>
+                        </video>
+                        <transition duration="1/1s" name="Transition" offset="9/2s" ref="Transition">
+                            <filter-video name="Transition" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="1" offset="5s" ref="Image1" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="29/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="2" offset="15s" ref="Image2" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="49/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="3" offset="25s" ref="Image3" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="69/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="4" offset="35s" ref="Image4" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="89/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="5" offset="45s" ref="Image5" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="109/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="6" offset="55s" ref="Image6" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="129/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="7" offset="65s" ref="Image7" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="149/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="8" offset="75s" ref="Image8" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="169/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="9" offset="85s" ref="Image9" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="189/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="10s" enabled="1" name="10" offset="95s" ref="Image10" start="0/1s">
+                            <adjust-conform type="fit" />
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                        <transition duration="1/1s" name="Smooth Cut" offset="209/2s" ref="Transition">
+                            <filter-video name="Smooth Cut" ref="r3" />
+                        </transition>
+                        <video duration="5/1" enabled="1" name="Solid Color" offset="F1/1s" ref="r1" start="0/1s">
+                            <adjust-transform anchor="0 0" position="0 0" scale="1 1" />
+                        </video>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>
